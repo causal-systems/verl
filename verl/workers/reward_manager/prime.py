@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import asyncio
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from functools import partial
 from typing import Callable, Optional
 
@@ -46,33 +46,41 @@ async def single_compute_score(evaluation_func, completion, reference, task, tas
         return None  # Default value for failed rows
 
 
-async def parallel_compute_score_async(evaluation_func, completions, references, tasks, extra_info=None, num_processes=64):
+async def parallel_compute_score_async(evaluation_func, completions, references, tasks, extra_info=None, num_processes=4):
     scores = []
-    with ProcessPoolExecutor(max_workers=num_processes) as executor:
+    with ThreadPoolExecutor(max_workers=num_processes) as executor:
         if extra_info is None:
             extra_info = [None] * len(tasks)
+
         # Create tasks for all rows
-        tasks_async = [single_compute_score(evaluation_func, completion, reference, task, task_extra_info, executor, timeout=300.0) for completion, reference, task, task_extra_info in zip(completions, references, tasks, extra_info)]
-        # to prevent very occasional starvation caused by some anomalous programs ( like infinite loop ), the exceptions in async programs will instantly halt the evaluation, and all summoned processes will be killed.
+        tasks_async = [
+            single_compute_score(
+                evaluation_func,
+                completion,
+                reference,
+                task,
+                task_extra_info,
+                executor,
+                timeout=300.0
+            )
+            for completion, reference, task, task_extra_info in zip(completions, references, tasks, extra_info)
+        ]
+
         try:
             results = await asyncio.gather(*tasks_async, return_exceptions=False)
-        except:
-            for pid, proc in executor._processes.items():
-                try:
-                    proc.kill()
-                except Exception as kill_err:
-                    print("shut down failed: " + str(kill_err))
+        except Exception as e:
+            print("Exception during async evaluation:", e)
             raise
 
     # Process results
     for result, completion, reference, task in zip(results, completions, references, tasks):
         if isinstance(result, Exception) or result is None:
-            # Handle failed or timed-out tasks
             scores.append(0.0)
         elif isinstance(result[0], (int, float, bool)):
             scores.append(float(result[0]))
         else:
             scores.append(float(result[0][0]))
+
     return scores
 
 
@@ -164,3 +172,4 @@ class PrimeRewardManager:
             return {"reward_tensor": reward_tensor}
         else:
             return reward_tensor
+
