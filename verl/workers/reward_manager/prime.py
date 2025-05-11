@@ -24,7 +24,7 @@ from verl import DataProto
 from verl.utils.reward_score import _default_compute_score
 
 
-async def single_compute_score(evaluation_func, completion, reference, task, task_extra_info, executor, timeout=300.0):
+async def single_compute_score(evaluation_func, completion, reference, task, task_extra_info, executor, timeout=999999999999):
     loop = asyncio.get_running_loop()
     try:
         # Ensure process_completion is called properly
@@ -46,7 +46,7 @@ async def single_compute_score(evaluation_func, completion, reference, task, tas
         return None  # Default value for failed rows
 
 
-async def parallel_compute_score_async(evaluation_func, completions, references, tasks, extra_info=None, num_processes=4):
+async def parallel_compute_score_async(evaluation_func, completions, references, tasks, extra_info=None, num_processes=8192):
     scores = []
     with ThreadPoolExecutor(max_workers=num_processes) as executor:
         if extra_info is None:
@@ -61,7 +61,7 @@ async def parallel_compute_score_async(evaluation_func, completions, references,
                 task,
                 task_extra_info,
                 executor,
-                timeout=300.0
+                timeout=999999999999
             )
             for completion, reference, task, task_extra_info in zip(completions, references, tasks, extra_info)
         ]
@@ -123,7 +123,7 @@ class PrimeRewardManager:
                     ground_truth,
                     data_sources,
                     extra_info=extra_info,
-                    num_processes=64,
+                    num_processes=8192,
                 )
             )
         except asyncio.TimeoutError:
